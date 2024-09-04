@@ -1,42 +1,41 @@
-# Dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
 
-# Testing
-/coverage
+# Build output
+dist/
+build/
 
-# Production
-/build
-/dist
-
-# Misc
-.DS_Store
+# Environment variables
+.env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
 
 # Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+*.log
 
-# Editor directories and files
-.idea
-.vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+# Temporary files
+*.tmp
+*.temp
 
-# Optional: Uncomment if you're using TypeScript
-# *.tsbuildinfo
+# Dependency lock files (uncomment if you want to ignore them)
+# package-lock.json
+# yarn.lock
 
-# Optional: Uncomment if you're using Next.js
-# .next/
-# out/
+# Testing
+coverage/
 
-# Optional: Uncomment if you're using Vercel
-# .vercel
+# Miscellaneous
+*.bak
+*.cache

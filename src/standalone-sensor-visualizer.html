@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Data Visualizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #visualizer {
+            display: none;
+        }
+        canvas {
+            border: 1px solid #ddd;
+        }
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .controls button {
+            margin: 0 5px;
+            padding: 5px 10px;
+        }
+        #frameInfo, #debugInfo, #rawData {
+            text-align: left;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #debugInfo {
+            color: red;
+        }
+        #rawData {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        .export-controls, .annotation-controls {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .export-controls button, .annotation-controls button {
+            margin: 0 5px;
+            padding: 5px 10px;
+        }
+        #annotations {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .filter-controls {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .filter-controls input {
+            margin: 0 5px;
+        }
+        #sensorCanvas {
+            cursor: move;
+        }
+        .visualization-controls {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .visualization-controls select {
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sensor Data Visualizer</h1>
+    
+    <input type="file" id="fileInput" accept=".log,.txt">
+    
+    <div id="visualizer">
+        <div style="position: relative;">
+            <canvas id="sensorCanvas" width="600" height="400"></canvas>
+            <canvas id="annotations" width="600" height="400"></canvas>
+        </div>
+        <div class="controls">
+            <button id="playPauseBtn">Play</button>
+            <button id="stepBackBtn">Step Back</button>
+            <button id="stepForwardBtn">Step Forward</button>
+            <button id="resetBtn">Reset</button>
+            <label for="speedControl">Speed:</label>
+            <input type="range" id="speedControl" min="0.1" max="5" step="0.1" value="1">
+            <span id="speedValue">1x</span>
+        </div>
+        <div class="export-controls">
+            <button id="exportImageBtn">Export Image</button>
+            <button id="exportCSVBtn">Export CSV</button>
+        </div>
+        <div class="annotation-controls">
+            <button id="addAnnotationBtn">Add Annotation</button>
+            <button id="clearAnnotationsBtn">Clear Annotations</button>
+        </div>
+        <div class="filter-controls">
+            <label for="thresholdFilter">Threshold Filter:</label>
+            <input type="range" id="thresholdFilter" min="0" max="10" step="0.1" value="0">
+            <span id="thresholdValue">0</span>
+        </div>
+        <div class="visualization-controls">
+            <label for="visualizationMode">Visualization Mode:</label>
+            <select id="visualizationMode">
+                <option value="default">Default</option>
+                <option value="heatmap">Heatmap</option>
+                <option value="contour">Contour</option>
+            </select>
+        </div>
+        <div id="frameInfo"></div>
+    </div>
+    <div id="debugInfo"></div>
+    <h3>Raw Data (first 1000 characters):</h3>
+    <div id="rawData"></div>
+
+    <script>
+        let frames = [];
+        let currentFrameIndex = 0;
+        let isPlaying = false;
+        let playbackSpeed = 1;
+        let animationId;
+        let annotations = [];
+        let threshold = 0;
+        let zoomLevel = 1;
+        let panX = 0;
+        let panY = 0;
+        let isDragging = false;
+        let lastMouseX, lastMouseY;
+        let visualizationMode = 'default';
+
+        const fileInput = document.getElementById('fileInput');
+        const visualizer = document.getElementById('visualizer');
+        const canvas = document.getElementById('sensorCanvas');
+        const ctx = canvas.getContext('2d');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const stepBackBtn = document.getElementById('stepBackBtn');
+        const stepForwardBtn = document.getElementById('stepForwardBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const speedControl = document.getElementById('speedControl');
+        const speedValue = document.getElementById('speedValue');
+        const frameInfo = document.getElementById('frameInfo');
+        const debugInfo = document.getElementById('debugInfo');
+        const rawData = document.getElementById('rawData');
+        const annotationsCanvas = document.getElementById('annotations');
+        const annotationsCtx = annotationsCanvas.getContext('2d');
+        const exportImageBtn = document.getElementById('exportImageBtn');
+        const exportCSVBtn = document.getElementById('exportCSVBtn');
+        const addAnnotationBtn = document.getElementById('addAnnotationBtn');
+        const clearAnnotationsBtn = document.getElementById('clearAnnotationsBtn');
+        const thresholdFilter = document.getElementById('thresholdFilter');
+        const thresholdValue = document.getElementById('thresholdValue');
+        const visualizationModeSelect = document.getElementById('visualizationMode');
+
+        fileInput.addEventListener('change', handleFileSelect);
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        stepBackBtn.addEventListener('click', stepBackward);
+        stepForwardBtn.addEventListener('click', stepForward);
+        resetBtn.addEventListener('click', reset);
+        speedControl.addEventListener('input', updateSpeed);
+        exportImageBtn.addEventListener('click', exportImage);
+        exportCSVBtn.addEventListener('click', exportCSV);
+        addAnnotationBtn.addEventListener('click', addAnnotation);
+        clearAnnotationsBtn.addEventListener('click', clearAnnotations);
+        annotationsCanvas.addEventListener('click', handleAnnotationClick);
+        thresholdFilter.addEventListener('input', updateThreshold);
+        canvas.addEventListener('mousedown', startDragging);
+        canvas.addEventListener('mousemove', drag);
+        canvas.addEventListener('mouseup', stopDragging);
+        canvas.addEventListener('mouseleave', stopDragging);
+        canvas.addEventListener('wheel', zoom);
+        visualizationModeSelect.addEventListener('change', updateVisualizationMode);
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const content = e.target.result;
+                rawData.textContent = content.substring(0, 1000) + (content.length > 1000 ? '...' : '');
+                parseData(content);
+                visualizer.style.display = 'block';
+                reset();
+            };
+
+            reader.readAsText(file);
+        }
+
+        function parseData(content) {
+            debugInfo.textContent = '';
+            frames = content.split('\n')
+                .map((line, index) => {
+                    const match = line.match(/\{.*\}/);
+                    if (match) {
+                        try {
+                            // Convert single quotes to double quotes, but keep single quotes within string values
+                            let jsonString = match[0].replace(/'/g, '"').replace(/"([^"]+)":/g, (match, p1) => `'${p1}':`);
+                            // Now replace the single quotes we just added back with double quotes
+                            jsonString = jsonString.replace(/'/g, '"');
+                            const frame = JSON.parse(jsonString);
+                            if (!frame.data || !Array.isArray(frame.data)) {
+                                throw new Error(`Invalid data structure in frame ${index + 1}`);
+                            }
+                            return frame;
+                        } catch (error) {
+                            debugInfo.textContent += `Error parsing JSON at line ${index + 1}: ${error.message}\n`;
+                            return null;
+                        }
+                    }
+                    return null;
+                })
+                .filter(frame => frame !== null);
+            
+            debugInfo.textContent += `Parsed ${frames.length} valid frames.\n`;
+            if (frames.length === 0) {
+                debugInfo.textContent += 'No valid frames found. Check your data format.\n';
+            } else {
+                debugInfo.textContent += `First frame data: ${JSON.stringify(frames[0].data[0]).substring(0, 100)}...\n`;
+            }
+        }
+
+        function drawFrame(frame) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const { size_x, size_y, data } = frame;
+            
+            if (!size_x || !size_y || !data) {
+                debugInfo.textContent += `Invalid frame structure at index ${currentFrameIndex}\n`;
+                return;
+            }
+
+            ctx.save();
+            ctx.translate(panX, panY);
+            ctx.scale(zoomLevel, zoomLevel);
+
+            const cellWidth = canvas.width / size_x;
+            const cellHeight = canvas.height / size_y;
+
+            switch (visualizationMode) {
+                case 'heatmap':
+                    drawHeatmap(data, size_x, size_y, cellWidth, cellHeight);
+                    break;
+                case 'contour':
+                    drawContour(data, size_x, size_y, cellWidth, cellHeight);
+                    break;
+                default:
+                    drawDefault(data, size_x, size_y, cellWidth, cellHeight);
+            }
+
+            ctx.restore();
+
+            frameInfo.textContent = `Frame: ${currentFrameIndex + 1} / ${frames.length} | Zoom: ${zoomLevel.toFixed(2)}x`;
+            drawAnnotations();
+        }
+
+        function drawAnnotations() {
+            annotationsCtx.clearRect(0, 0, annotationsCanvas.width, annotationsCanvas.height);
+            annotationsCtx.save();
+            annotationsCtx.translate(panX, panY);
+            annotationsCtx.scale(zoomLevel, zoomLevel);
+
+            annotations.forEach(annotation => {
+                annotationsCtx.fillStyle = 'red';
+                annotationsCtx.beginPath();
+                annotationsCtx.arc(annotation.x, annotation.y, 5 / zoomLevel, 0, 2 * Math.PI);
+                annotationsCtx.fill();
+                
+                annotationsCtx.fillStyle = 'black';
+                annotationsCtx.font = `${12 / zoomLevel}px Arial`;
+                annotationsCtx.fillText(annotation.text, annotation.x + 10 / zoomLevel, annotation.y);
+            });
+
+            annotationsCtx.restore();
+        }
+
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            playPauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
+            if (isPlaying) {
+                playAnimation();
+            } else {
+                cancelAnimationFrame(animationId);
+            }
+        }
+
+        function stepForward() {
+            if (frames.length > 0) {
+                currentFrameIndex = (currentFrameIndex + 1) % frames.length;
+                drawFrame(frames[currentFrameIndex]);
+            }
+        }
+
+        function stepBackward() {
+            if (frames.length > 0) {
+                currentFrameIndex = (currentFrameIndex - 1 + frames.length) % frames.length;
+                drawFrame(frames[currentFrameIndex]);
+            }
+        }
+
+        function reset() {
+            currentFrameIndex = 0;
+            isPlaying = false;
+            playPauseBtn.textContent = 'Play';
+            cancelAnimationFrame(animationId);
+            zoomLevel = 1;
+            panX = 0;
+            panY = 0;
+            if (frames.length > 0) {
+                drawFrame(frames[currentFrameIndex]);
+            }
+        }
+
+        function updateSpeed() {
+            playbackSpeed = parseFloat(speedControl.value);
+            speedValue.textContent = playbackSpeed.toFixed(1) + 'x';
+        }
+
+        function playAnimation() {
+            if (isPlaying && frames.length > 0) {
+                stepForward();
+                animationId = requestAnimationFrame(() => setTimeout(playAnimation, 1000 / playbackSpeed));
+            }
+        }
+
+        function exportImage() {
+            const combinedCanvas = document.createElement('canvas');
+            combinedCanvas.width = canvas.width;
+            combinedCanvas.height = canvas.height;
+            const combinedCtx = combinedCanvas.getContext('2d');
+
+            combinedCtx.drawImage(canvas, 0, 0);
+            combinedCtx.drawImage(annotationsCanvas, 0, 0);
+
+            const link = document.createElement('a');
+            link.download = `frame_${currentFrameIndex + 1}.png`;
+            link.href = combinedCanvas.toDataURL();
+            link.click();
+        }
+
+        function exportCSV() {
+            const frame = frames[currentFrameIndex];
+            let csvContent = "data:text/csv;charset=utf-8,";
+            
+            frame.data.forEach(row => {
+                csvContent += row.join(",") + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `frame_${currentFrameIndex + 1}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function addAnnotation() {
+            const text = prompt("Enter annotation text:");
+            if (text) {
+                annotationsCanvas.style.pointerEvents = 'auto';
+                annotationsCanvas.style.cursor = 'crosshair';
+                addAnnotationBtn.disabled = true;
+            }
+        }
+
+        function handleAnnotationClick(event) {
+            const rect = annotationsCanvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left - panX) / zoomLevel;
+            const y = (event.clientY - rect.top - panY) / zoomLevel;
+            
+            annotations.push({ x, y, text: prompt("Enter annotation text:") });
+            drawAnnotations();
+            
+            annotationsCanvas.style.pointerEvents = 'none';
+            annotationsCanvas.style.cursor = 'default';
+            addAnnotationBtn.disabled = false;
+        }
+
+        function clearAnnotations() {
+            annotations = [];
+            drawAnnotations();
+        }
+
+        function updateThreshold() {
+            threshold = parseFloat(thresholdFilter.value);
+            thresholdValue.textContent = threshold.toFixed(1);
+            if (frames.length > 0) {
+                drawFrame(frames[currentFrameIndex]);
+            }
+        }
+
+        function startDragging(e) {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+
+        function drag(e) {
+            if (isDragging) {
+                const deltaX = e.clientX - lastMouseX;
+                const deltaY = e.clientY - lastMouseY;
+                panX += deltaX / zoomLevel;
+                panY += deltaY / zoomLevel;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+                drawFrame(frames[currentFrameIndex]);
+            }
+        }
+
+        function stopDragging() {
+            isDragging = false;
+        }
+
+        function zoom(e) {
+            e.preventDefault();
+            const zoomSensitivity = 0.1;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (e.deltaY < 0) {
+                zoomLevel *= (1 + zoomSensitivity);
+            } else {
+                zoomLevel /= (1 + zoomSensitivity);
+            }
+
+            // Adjust pan to zoom towards mouse position
+            panX -= (mouseX / zoomLevel - mouseX / (zoomLevel / (1 + zoomSensitivity)));
+            panY -= (mouseY / zoomLevel - mouseY / (zoomLevel / (1 + zoomSensitivity)));
+
+            zoomLevel = Math.max(0.1, Math.min(10, zoomLevel)); // Limit zoom level
+            drawFrame(frames[currentFrameIndex]);
+        }
+
+        function updateVisualizationMode() {
+            visualizationMode = visualizationModeSelect.value;
+            if (frames.length > 0) {
+                drawFrame(frames[currentFrameIndex]);
+            }
+        }
+
+        function drawDefault(data, size_x, size_y, cellWidth, cellHeight) {
+            data.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value > threshold) {
+                        ctx.fillStyle = `rgba(0, 0, 255, ${value / 10})`;
+                        ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                    }
+                });
+            });
+        }
+
+        function drawHeatmap(data, size_x, size_y, cellWidth, cellHeight) {
+            const maxValue = Math.max(...data.flat());
+            data.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value > threshold) {
+                        const hue = (1 - value / maxValue) * 240; // Blue (240) to Red (0)
+                        ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                        ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                    }
+                });
+            });
+        }
+
+        function drawContour(data, size_x, size_y, cellWidth, cellHeight) {
+            const contourLevels = 10;
+            const maxValue = Math.max(...data.flat());
+            const contourStep = maxValue / contourLevels;
+
+            for (let level = 1; level <= contourLevels; level++) {
+                const contourValue = level * contourStep;
+                ctx.beginPath();
+                ctx.strokeStyle = `hsl(${240 - level * 24}, 100%, 50%)`;
+                ctx.lineWidth = 2 / zoomLevel;
+
+                for (let y = 0; y < size_y; y++) {
+                    for (let x = 0; x < size_x; x++) {
+                        if (data[y][x] >= contourValue) {
+                            const x1 = x * cellWidth;
+                            const y1 = y * cellHeight;
+                            const x2 = (x + 1) * cellWidth;
+                            const y2 = (y + 1) * cellHeight;
+
+                            if (x === 0 || data[y][x-1] < contourValue) ctx.moveTo(x1, y1 + cellHeight/2);
+                            if (y === 0 || data[y-1][x] < contourValue) ctx.lineTo(x1 + cellWidth/2, y1);
+                            if (x === size_x-1 || data[y][x+1] < contourValue) ctx.lineTo(x2, y1 + cellHeight/2);
+                            if (y === size_y-1 || data[y+1][x] < contourValue) ctx.lineTo(x1 + cellWidth/2, y2);
+                        }
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+    </script>
+</body>
+</html>
