@@ -1,6 +1,6 @@
 # Sensor Data Visualizer
 
-A web-based tool for visualizing and analyzing sensor data from floor sensors. Originated from a discussion I had with David looking for media-style controls for analyzing frames.
+A web-based tool for visualizing and analyzing sensor data which provides media-style controls for analyzing frames.
 
 ## Quick Start
 
