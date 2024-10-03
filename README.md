@@ -1,6 +1,6 @@
 # Sensor Data Visualizer
 
-A web-based tool for visualizing and analyzing sensor data which provides media-style controls for analyzing frames.
+A web-based tool for providing media-style controls for visualizing and analyzing sensor data.
 
 ## Quick Start
 
