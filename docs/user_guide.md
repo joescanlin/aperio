@@ -16,14 +16,14 @@
 
 ## 1. Introduction
 
-The Sensor Data Visualizer is a web-based tool designed to visualize and analyze sensor data from our floor sensors. It provides an interactive interface for playing back sensor data, visualizing it in various modes, and performing basic analysis tasks.
+The Sensor Data Visualizer is a web-based tool designed to visualize and analyze sensor data from hardware sensors. It provides an interactive interface for playing back sensor data, visualizing it in various modes, and performing basic analysis tasks.
 
 ## 2. Getting Started
 
 To use the Sensor Data Visualizer:
 1. Clone the repository from Bitbucket.
 2. Open the `standalone-sensor-visualizer.html` file in a web browser (Chrome, Firefox, Safari, or Edge recommended).
-3. Use the file input to load the sensor data log file. Of note, the only file I have tested this with is one David provided, will need to test many others to find other issues and opportunities
+3. Use the file input to load the sensor data log file. 
 
 ## 3. User Interface
 
@@ -151,7 +151,7 @@ function exportCSV() {
 
 ### 4.4. Annotation Tools
 
-Users can add and clear annotations on specific frames. These annotations can be used to mark points of interest in the data. I have not thoroughly tested this yet.
+Users can add and clear annotations on specific frames. These annotations can be used to mark points of interest in the data.
 
 ```javascript
 let annotations = {};
